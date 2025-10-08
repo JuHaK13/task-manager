@@ -7,10 +7,22 @@ import {
     toggleTaskComplete,
     moveUncompletedTasks
 } from './tasks.js';
+import {
+    requestNotificationPermission,
+    getReminderSettings,
+    saveReminderSettings,
+    initializeReminders,
+    scheduleTaskReminder
+} from './notifications.js';
+import {
+    changePassword,
+    deleteAccount
+} from './account-settings.js';
 
 // Estado global
 let allTasks = [];
 let selectedDate = new Date().toISOString().split('T')[0];
+let currentSort = 'recent-desc';
 
 // Elementos del DOM
 const dateSelector = document.getElementById('date-selector');
@@ -27,6 +39,25 @@ const addWeekTasks = document.getElementById('add-week-tasks');
 const modalError = document.getElementById('modal-error');
 const mainError = document.getElementById('main-error');
 const loading = document.getElementById('loading');
+const sortSelector = document.getElementById('sort-tasks');
+
+// Elementos de configuración
+const settingsBtn = document.getElementById('settings-btn');
+const settingsModal = document.getElementById('settings-modal');
+const closeSettings = document.getElementById('close-settings');
+const modalTabs = document.querySelectorAll('.modal-tab');
+const settingsTabs = document.querySelectorAll('.settings-tab');
+const enableReminders = document.getElementById('enable-reminders');
+const reminderHours = document.getElementById('reminder-hours');
+const enableDailyReminder = document.getElementById('enable-daily-reminder');
+const dailyReminderTime = document.getElementById('daily-reminder-time');
+const saveNotifications = document.getElementById('save-notifications');
+const currentPassword = document.getElementById('current-password');
+const newPassword = document.getElementById('new-password');
+const confirmPassword = document.getElementById('confirm-password');
+const changePasswordBtn = document.getElementById('change-password-btn');
+const deleteAccountBtn = document.getElementById('delete-account-btn');
+const settingsError = document.getElementById('settings-error');
 
 // Inicializar fecha
 dateSelector.value = selectedDate;
@@ -34,9 +65,14 @@ dateSelector.min = selectedDate;
 taskDate.value = selectedDate;
 taskDate.min = selectedDate;
 
-// Event Listeners
+// Event Listeners básicos
 dateSelector.addEventListener('change', (e) => {
     selectedDate = e.target.value;
+    renderTasks();
+});
+
+sortSelector.addEventListener('change', (e) => {
+    currentSort = e.target.value;
     renderTasks();
 });
 
@@ -63,10 +99,39 @@ addWeekTasks.addEventListener('click', async () => {
     await handleAddTask(true);
 });
 
+// Event Listeners de configuración
+settingsBtn.addEventListener('click', () => {
+    loadSettingsData();
+    settingsModal.classList.remove('hidden');
+});
+
+closeSettings.addEventListener('click', () => {
+    settingsModal.classList.add('hidden');
+});
+
+settingsModal.addEventListener('click', (e) => {
+    if (e.target === settingsModal) {
+        settingsModal.classList.add('hidden');
+    }
+});
+
+modalTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+        const tabName = tab.getAttribute('data-tab');
+        switchTab(tabName);
+    });
+});
+
+saveNotifications.addEventListener('click', handleSaveNotifications);
+changePasswordBtn.addEventListener('click', handleChangePassword);
+deleteAccountBtn.addEventListener('click', handleDeleteAccount);
+
 // Escuchar cuando el usuario se autentica
 window.addEventListener('userAuthenticated', async (e) => {
+    await requestNotificationPermission();
     await loadTasks();
     await checkAndMoveUncompletedTasks();
+    initializeReminders(e.detail.uid, allTasks);
 });
 
 // Cargar tareas del usuario
@@ -124,7 +189,6 @@ async function handleAddTask(isWeek) {
         hideError(modalError);
 
         if (isWeek) {
-            // Añadir tarea para 7 días
             const promises = [];
             for (let i = 0; i < 7; i++) {
                 const taskDate = new Date();
@@ -140,8 +204,13 @@ async function handleAddTask(isWeek) {
             }
             const newTasks = await Promise.all(promises);
             allTasks.push(...newTasks);
+            
+            // Programar recordatorios para las nuevas tareas
+            const settings = getReminderSettings(user.uid);
+            if (settings.enabled) {
+                newTasks.forEach(task => scheduleTaskReminder(task, settings.hours));
+            }
         } else {
-            // Añadir una sola tarea
             const newTask = await createTask(user.uid, {
                 title,
                 description,
@@ -149,6 +218,12 @@ async function handleAddTask(isWeek) {
                 date
             });
             allTasks.push(newTask);
+            
+            // Programar recordatorio
+            const settings = getReminderSettings(user.uid);
+            if (settings.enabled) {
+                scheduleTaskReminder(newTask, settings.hours);
+            }
         }
 
         renderTasks();
@@ -193,11 +268,36 @@ async function handleDeleteTask(taskId) {
     }
 }
 
+// Ordenar tareas
+function sortTasks(tasks) {
+    const importanceOrder = { 'Importante': 3, 'Medio': 2, 'Nada': 1 };
+    
+    return tasks.sort((a, b) => {
+        switch (currentSort) {
+            case 'recent-desc':
+                return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
+            case 'recent-asc':
+                return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
+            case 'importance-desc':
+                return importanceOrder[b.importance] - importanceOrder[a.importance];
+            case 'importance-asc':
+                return importanceOrder[a.importance] - importanceOrder[b.importance];
+            case 'completed':
+                return b.completed - a.completed;
+            case 'pending':
+                return a.completed - b.completed;
+            default:
+                return 0;
+        }
+    });
+}
+
 // Renderizar tareas
 function renderTasks() {
     const todayTasks = allTasks.filter(task => task.date === selectedDate);
+    const sortedTasks = sortTasks([...todayTasks]);
     
-    if (todayTasks.length === 0) {
+    if (sortedTasks.length === 0) {
         tasksContainer.innerHTML = `
             <div class="empty-state">
                 <p>No hay tareas para este día</p>
@@ -207,10 +307,9 @@ function renderTasks() {
         return;
     }
 
-    tasksContainer.innerHTML = todayTasks.map(task => createTaskHTML(task)).join('');
+    tasksContainer.innerHTML = sortedTasks.map(task => createTaskHTML(task)).join('');
     
-    // Añadir event listeners a los elementos de tarea
-    todayTasks.forEach(task => {
+    sortedTasks.forEach(task => {
         const taskElement = document.querySelector(`[data-task-id="${task.id}"]`);
         if (!taskElement) return;
 
@@ -231,6 +330,7 @@ function renderTasks() {
 function createTaskHTML(task) {
     const importanceClass = task.importance.toLowerCase();
     const completedClass = task.completed ? 'completed' : '';
+    const taskCompletedClass = task.completed ? 'task-completed' : '';
     const checkSvg = task.completed ? `
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="20 6 9 17 4 12"></polyline>
@@ -238,7 +338,7 @@ function createTaskHTML(task) {
     ` : '';
 
     return `
-        <div class="task-item importance-${importanceClass}" data-task-id="${task.id}">
+        <div class="task-item importance-${importanceClass} ${taskCompletedClass}" data-task-id="${task.id}">
             <div class="task-left">
                 <div class="task-checkbox ${completedClass}">
                     ${checkSvg}
@@ -261,7 +361,140 @@ function createTaskHTML(task) {
     `;
 }
 
-// Cerrar modal
+// Cargar datos de configuración
+function loadSettingsData() {
+    const user = getCurrentUser();
+    if (!user) return;
+
+    const settings = getReminderSettings(user.uid);
+    enableReminders.checked = settings.enabled;
+    reminderHours.value = settings.hours;
+    enableDailyReminder.checked = settings.dailyReminder;
+    dailyReminderTime.value = settings.dailyTime;
+}
+
+// Cambiar entre tabs
+function switchTab(tabName) {
+    modalTabs.forEach(tab => {
+        if (tab.getAttribute('data-tab') === tabName) {
+            tab.classList.add('active');
+        } else {
+            tab.classList.remove('active');
+        }
+    });
+
+    settingsTabs.forEach(tab => {
+        if (tab.id === `${tabName}-tab`) {
+            tab.classList.remove('hidden');
+        } else {
+            tab.classList.add('hidden');
+        }
+    });
+}
+
+// Guardar configuración de notificaciones
+async function handleSaveNotifications() {
+    const user = getCurrentUser();
+    if (!user) return;
+
+    const hasPermission = await requestNotificationPermission();
+    
+    if (!hasPermission && enableReminders.checked) {
+        showError(settingsError, 'Debes permitir las notificaciones en tu navegador');
+        return;
+    }
+
+    const settings = {
+        enabled: enableReminders.checked,
+        hours: parseFloat(reminderHours.value),
+        dailyReminder: enableDailyReminder.checked,
+        dailyTime: dailyReminderTime.value
+    };
+
+    saveReminderSettings(user.uid, settings);
+    initializeReminders(user.uid, allTasks);
+    
+    showError(settingsError, '✅ Configuración guardada correctamente');
+    setTimeout(() => hideError(settingsError), 3000);
+}
+
+// Cambiar contraseña
+async function handleChangePassword() {
+    const current = currentPassword.value;
+    const newPass = newPassword.value;
+    const confirm = confirmPassword.value;
+
+    if (!current || !newPass || !confirm) {
+        showError(settingsError, 'Completa todos los campos');
+        return;
+    }
+
+    if (newPass !== confirm) {
+        showError(settingsError, 'Las contraseñas no coinciden');
+        return;
+    }
+
+    if (newPass.length < 6) {
+        showError(settingsError, 'La contraseña debe tener al menos 6 caracteres');
+        return;
+    }
+
+    try {
+        changePasswordBtn.disabled = true;
+        changePasswordBtn.textContent = 'Cambiando...';
+        hideError(settingsError);
+
+        await changePassword(current, newPass);
+        
+        currentPassword.value = '';
+        newPassword.value = '';
+        confirmPassword.value = '';
+        
+        showError(settingsError, '✅ Contraseña cambiada correctamente');
+        settingsError.style.background = '#D1FAE5';
+        settingsError.style.borderColor = '#6EE7B7';
+        settingsError.style.color = '#065F46';
+        
+        setTimeout(() => {
+            hideError(settingsError);
+            settingsError.style.background = '';
+            settingsError.style.borderColor = '';
+            settingsError.style.color = '';
+        }, 3000);
+    } catch (error) {
+        showError(settingsError, error.message);
+    } finally {
+        changePasswordBtn.disabled = false;
+        changePasswordBtn.textContent = 'Cambiar contraseña';
+    }
+}
+
+// Eliminar cuenta
+async function handleDeleteAccount() {
+    const password = prompt('⚠️ ADVERTENCIA: Esta acción es irreversible.\n\nPara confirmar, introduce tu contraseña:');
+    
+    if (!password) return;
+
+    const confirm = window.confirm('¿Estás completamente seguro? Se eliminarán todos tus datos permanentemente.');
+    
+    if (!confirm) return;
+
+    try {
+        deleteAccountBtn.disabled = true;
+        deleteAccountBtn.textContent = 'Eliminando...';
+        hideError(settingsError);
+
+        await deleteAccount(password);
+        
+        // El usuario será redirigido automáticamente al login por auth.js
+    } catch (error) {
+        showError(settingsError, error.message);
+        deleteAccountBtn.disabled = false;
+        deleteAccountBtn.textContent = 'Eliminar cuenta permanentemente';
+    }
+}
+
+// Cerrar modal de tareas
 function closeTaskModal() {
     taskModal.classList.add('hidden');
     taskTitle.value = '';
@@ -285,9 +518,6 @@ function showLoading(show) {
 function showError(element, message) {
     element.textContent = message;
     element.classList.remove('hidden');
-    setTimeout(() => {
-        hideError(element);
-    }, 5000);
 }
 
 function hideError(element) {

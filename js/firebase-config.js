@@ -5,21 +5,12 @@ import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase
 // Configuración de Firebase
 // Los valores se reemplazan automáticamente durante el despliegue
 const firebaseConfig = {
-<<<<<<< HEAD
     apiKey: "AIzaSyDAoIXKkY44gX8hQUuyC5rnwrDXaC422PE",
     authDomain: "tasks-10bdf.firebaseapp.com",
     projectId: "tasks-10bdf",
     storageBucket: "tasks-10bdf.firebasestorage.app",
     messagingSenderId: "386633277183",
     appId: "1:386633277183:web:1ae661b120927ea5c176ca"
-=======
-    apiKey: "__FIREBASE_API_KEY__",
-    authDomain: "__FIREBASE_AUTH_DOMAIN__",
-    projectId: "__FIREBASE_PROJECT_ID__",
-    storageBucket: "__FIREBASE_STORAGE_BUCKET__",
-    messagingSenderId: "__FIREBASE_MESSAGING_SENDER_ID__",
-    appId: "__FIREBASE_APP_ID__"
->>>>>>> main
 };
 
 // Inicializar Firebase

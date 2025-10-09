@@ -32,25 +32,29 @@ export function hasNotificationPermission() {
 export function showNotification(title, options = {}) {
     if (!hasNotificationPermission()) {
         console.log('No hay permiso para mostrar notificaciones');
-        return;
+        return null;
     }
 
-    const defaultOptions = {
-        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="0.9em" font-size="90">✓</text></svg>',
-        badge: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="0.9em" font-size="90">📝</text></svg>',
-        vibrate: [200, 100, 200],
-        requireInteraction: false,
-        ...options
-    };
+    try {
+        const defaultOptions = {
+            icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="0.9em" font-size="90">✓</text></svg>',
+            badge: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="0.9em" font-size="90">📝</text></svg>',
+            requireInteraction: false,
+            ...options
+        };
 
-    const notification = new Notification(title, defaultOptions);
-    
-    notification.onclick = () => {
-        window.focus();
-        notification.close();
-    };
+        const notification = new Notification(title, defaultOptions);
+        
+        notification.onclick = () => {
+            window.focus();
+            notification.close();
+        };
 
-    return notification;
+        return notification;
+    } catch (error) {
+        console.error('Error al mostrar notificación:', error);
+        return null;
+    }
 }
 
 // Obtener configuración de recordatorios del usuario

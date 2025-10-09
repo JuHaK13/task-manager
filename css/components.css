@@ -31,6 +31,25 @@
     background: #F0FDF4;
 }
 
+/* Tareas completadas - colores más apagados */
+.task-item.importance-importante.task-completed {
+    border-left-color: #FCA5A5;
+    background: #FEE2E2;
+    opacity: 0.8;
+}
+
+.task-item.importance-medio.task-completed {
+    border-left-color: #FCD34D;
+    background: #FEF3C7;
+    opacity: 0.8;
+}
+
+.task-item.importance-nada.task-completed {
+    border-left-color: #6EE7B7;
+    background: #D1FAE5;
+    opacity: 0.8;
+}
+
 .task-left {
     display: flex;
     align-items: flex-start;

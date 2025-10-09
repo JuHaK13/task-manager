@@ -59,11 +59,18 @@ const changePasswordBtn = document.getElementById('change-password-btn');
 const deleteAccountBtn = document.getElementById('delete-account-btn');
 const settingsError = document.getElementById('settings-error');
 
+// Verificar que los elementos críticos existan
+if (!dateSelector || !tasksContainer || !addTaskBtn) {
+    console.error('Error: Elementos del DOM no encontrados');
+}
+
 // Inicializar fecha
-dateSelector.value = selectedDate;
-dateSelector.min = selectedDate;
-taskDate.value = selectedDate;
-taskDate.min = selectedDate;
+if (dateSelector && taskDate) {
+    dateSelector.value = selectedDate;
+    dateSelector.min = selectedDate;
+    taskDate.value = selectedDate;
+    taskDate.min = selectedDate;
+}
 
 // Event Listeners básicos
 dateSelector.addEventListener('change', (e) => {
@@ -107,11 +114,13 @@ settingsBtn.addEventListener('click', () => {
 
 closeSettings.addEventListener('click', () => {
     settingsModal.classList.add('hidden');
+    hideError(settingsError);
 });
 
 settingsModal.addEventListener('click', (e) => {
     if (e.target === settingsModal) {
         settingsModal.classList.add('hidden');
+        hideError(settingsError);
     }
 });
 
@@ -128,10 +137,17 @@ deleteAccountBtn.addEventListener('click', handleDeleteAccount);
 
 // Escuchar cuando el usuario se autentica
 window.addEventListener('userAuthenticated', async (e) => {
-    await requestNotificationPermission();
-    await loadTasks();
-    await checkAndMoveUncompletedTasks();
-    initializeReminders(e.detail.uid, allTasks);
+    try {
+        await requestNotificationPermission();
+        await loadTasks();
+        await checkAndMoveUncompletedTasks();
+        const user = getCurrentUser();
+        if (user) {
+            initializeReminders(user.uid, allTasks);
+        }
+    } catch (error) {
+        console.error('Error durante la autenticación:', error);
+    }
 });
 
 // Cargar tareas del usuario
@@ -496,16 +512,20 @@ async function handleDeleteAccount() {
 
 // Cerrar modal de tareas
 function closeTaskModal() {
-    taskModal.classList.add('hidden');
-    taskTitle.value = '';
-    taskDescription.value = '';
-    taskImportance.value = 'Medio';
-    taskDate.value = selectedDate;
+    if (taskModal) {
+        taskModal.classList.add('hidden');
+    }
+    if (taskTitle) taskTitle.value = '';
+    if (taskDescription) taskDescription.value = '';
+    if (taskImportance) taskImportance.value = 'Medio';
+    if (taskDate) taskDate.value = selectedDate;
     hideError(modalError);
 }
 
 // Funciones auxiliares
 function showLoading(show) {
+    if (!loading || !tasksContainer) return;
+    
     if (show) {
         loading.classList.remove('hidden');
         tasksContainer.classList.add('hidden');
@@ -516,16 +536,19 @@ function showLoading(show) {
 }
 
 function showError(element, message) {
+    if (!element) return;
     element.textContent = message;
     element.classList.remove('hidden');
 }
 
 function hideError(element) {
+    if (!element) return;
     element.classList.add('hidden');
     element.textContent = '';
 }
 
 function escapeHtml(text) {
+    if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
